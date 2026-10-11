@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "413042106712",
+    "project_id": "chat-one-one-66cbf",
+    "storage_bucket": "chat-one-one-66cbf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:413042106712:android:361dcefe10dc26b5ec052d",
+        "android_client_info": {
+          "package_name": "com.example.chat_one_one"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCvn96BA2aJJGbttDjwXGCjBEOyYnbmVyw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

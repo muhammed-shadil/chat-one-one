@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// Photos and files live under the same secret chat ID as the messages
+// (kChatId in lib/config.dart). Nothing outside it is accessible.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /chats/rhxd7yqwcq6xant5r6k5nzvx/{allPaths=**} {
+      allow read, delete: if true;
+      // 100 MB limit, matching kMaxUploadBytes in lib/config.dart.
+      allow create: if request.resource.size < 100 * 1024 * 1024;
+    }
+  }
+}

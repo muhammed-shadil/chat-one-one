@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// There are no accounts, so access is controlled by the chat ID instead:
+// only data under this one ID (kChatId in lib/config.dart) can be touched.
+// Everything else, including listing which chats exist, is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /chats/rhxd7yqwcq6xant5r6k5nzvx {
+
+      match /messages/{messageId} {
+        allow read, delete: if true;
+
+        allow create: if request.resource.data.senderId in ['p1', 'p2']
+                      && request.resource.data.type in ['text', 'image', 'file'];
+
+        // After sending, only read receipts and view-once state may change.
+        allow update: if request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['seen', 'opened', 'openedAt', 'url']);
+      }
+
+      match /members/{personId} {
+        allow read: if true;
+        allow write: if personId in ['p1', 'p2'];
+      }
+    }
+  }
+}
