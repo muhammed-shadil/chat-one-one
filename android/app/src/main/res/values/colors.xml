@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accent of message notifications, matching the app's green. -->
+    <color name="notification">#008069</color>
+</resources>

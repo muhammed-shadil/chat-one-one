@@ -1,11 +1,11 @@
 {
-    "name": "chat_one_one",
-    "short_name": "chat_one_one",
+    "name": "Chat One One",
+    "short_name": "Chat One One",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#008069",
+    "theme_color": "#008069",
+    "description": "A private chat for two.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

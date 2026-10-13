@@ -71,6 +71,6 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos to send in the chat.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Needed by the camera picker.</string>
+	<string>Record voice messages, and sound for the camera.</string>
 </dict>
 </plist>

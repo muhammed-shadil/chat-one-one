@@ -1,1 +1,84 @@
-{"firestore":{"database":"(default)","location":"asia-south1","rules":"firestore.rules"},"storage":{"rules":"storage.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"chat-one-one-66cbf","appId":"1:413042106712:android:361dcefe10dc26b5ec052d","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"chat-one-one-66cbf","configurations":{"android":"1:413042106712:android:361dcefe10dc26b5ec052d","ios":"1:413042106712:ios:3c4eafd9d6e64981ec052d"}}}}}}
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-south1",
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "chat-one-one-66cbf",
+          "appId": "1:413042106712:android:361dcefe10dc26b5ec052d",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "chat-one-one-66cbf",
+          "configurations": {
+            "android": "1:413042106712:android:361dcefe10dc26b5ec052d",
+            "ios": "1:413042106712:ios:3c4eafd9d6e64981ec052d",
+            "web": "1:413042106712:web:3e02d0dc90fb12f4ec052d"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html|js|json)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "emulators": {
+    "singleProjectMode": true,
+    "firestore": {
+      "port": 8080
+    },
+    "storage": {
+      "port": 9199
+    },
+    "functions": {
+      "port": 5001
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

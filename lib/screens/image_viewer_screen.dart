@@ -1,8 +1,8 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/message.dart';
 import '../utils/format.dart';
+import '../widgets/network_photo.dart';
 
 /// Full-screen, zoomable photo.
 class ImageViewerScreen extends StatelessWidget {
@@ -42,15 +42,13 @@ class ImageViewerScreen extends StatelessWidget {
               child: Center(
                 child: Hero(
                   tag: message.id,
-                  child: CachedNetworkImage(
-                    imageUrl: message.url ?? '',
+                  child: NetworkPhoto(
+                    url: message.url ?? '',
                     fit: BoxFit.contain,
-                    placeholder: (_, _) =>
+                    placeholder:
                         const CircularProgressIndicator(color: Colors.white),
-                    errorWidget: (_, _, _) => const Icon(
-                        Icons.broken_image_outlined,
-                        color: Colors.white54,
-                        size: 64),
+                    error: const Icon(Icons.broken_image_outlined,
+                        color: Colors.white54, size: 64),
                   ),
                 ),
               ),

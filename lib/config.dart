@@ -5,6 +5,11 @@
 /// If you change it, change it in all three places and redeploy the rules.
 const String kChatId = 'rhxd7yqwcq6xant5r6k5nzvx';
 
+/// Build with `--dart-define=USE_EMULATORS=true` to talk to the local Firebase
+/// emulators (`firebase emulators:start`) instead of the real project. Push
+/// notifications are off in that mode, since the emulators can't send them.
+const bool kUseEmulators = bool.fromEnvironment('USE_EMULATORS');
+
 /// The two people in the chat. Their display names are chosen inside the app
 /// on first launch, so nothing here needs editing.
 const String kPerson1 = 'p1';

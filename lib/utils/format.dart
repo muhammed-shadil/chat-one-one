@@ -14,6 +14,28 @@ String formatBytes(int bytes) {
 
 String formatTime(DateTime t) => DateFormat.jm().format(t);
 
+/// "0:07", "12:45", "1:02:03".
+String formatDuration(Duration d) {
+  final s = d.inSeconds;
+  final mmss = '${(s ~/ 60) % 60}:${(s % 60).toString().padLeft(2, '0')}';
+  if (s < 3600) return mmss;
+  return '${s ~/ 3600}:${mmss.padLeft(5, '0')}';
+}
+
+/// Web addresses in [text], as (start, end) ranges.
+Iterable<(int, int)> findLinks(String text) sync* {
+  for (final m in _link.allMatches(text)) {
+    var end = m.end;
+    // Leave trailing punctuation out of the link: "see example.com."
+    while (end > m.start && '.,!?;:)]\'"'.contains(text[end - 1])) {
+      end--;
+    }
+    yield (m.start, end);
+  }
+}
+
+final _link = RegExp(r'(?:https?://|www\.)[^\s<>]+', caseSensitive: false);
+
 bool isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 

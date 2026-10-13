@@ -114,6 +114,7 @@ class _ImagePreviewScreenState extends State<ImagePreviewScreen> {
                   ),
                   const SizedBox(width: 8),
                   FloatingActionButton(
+                    tooltip: 'Send',
                     onPressed: _send,
                     shape: const CircleBorder(),
                     child: const Icon(Icons.send),

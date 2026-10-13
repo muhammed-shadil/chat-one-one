@@ -4,10 +4,15 @@ rules_version = '2';
 // (kChatId in lib/config.dart). Nothing outside it is accessible.
 service firebase.storage {
   match /b/{bucket}/o {
-    match /chats/rhxd7yqwcq6xant5r6k5nzvx/{allPaths=**} {
-      allow read, delete: if true;
+    match /chats/rhxd7yqwcq6xant5r6k5nzvx/{folder}/{allPaths=**} {
+      // The app only uses images/, files/ and audio/. The deleted/ archive is
+      // written by Cloud Functions and is visible only in the Firebase console.
+      allow read: if folder in ['images', 'files', 'audio'];
       // 100 MB limit, matching kMaxUploadBytes in lib/config.dart.
-      allow create: if request.resource.size < 100 * 1024 * 1024;
+      allow create: if folder in ['images', 'files', 'audio']
+                    && request.resource.size < 100 * 1024 * 1024;
+      // No deletes from the app: Cloud Functions move opened view-once photos
+      // and deleted messages' files into deleted/ instead.
     }
   }
 }

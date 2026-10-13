@@ -1,15 +1,21 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config.dart';
 import '../models/message.dart';
 import '../screens/image_viewer_screen.dart';
 import '../screens/view_once_screen.dart';
 import '../services/chat_service.dart';
 import '../theme.dart';
 import '../utils/format.dart';
+import 'link_text.dart';
+import 'network_photo.dart';
+import 'reply_quote.dart';
+import 'swipe_to_reply.dart';
 import 'view_once_icon.dart';
+import 'voice_message.dart';
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -18,7 +24,11 @@ class MessageBubble extends StatelessWidget {
     required this.isMine,
     required this.chat,
     required this.senderName,
+    this.replyName,
     this.onLongPress,
+    this.onReply,
+    this.onTapReply,
+    this.highlighted = false,
     this.gapAbove = 2,
   });
 
@@ -26,29 +36,73 @@ class MessageBubble extends StatelessWidget {
   final bool isMine;
   final ChatService chat;
   final String senderName;
+
+  /// Who wrote the message this one replies to: "You" or their name.
+  final String? replyName;
   final VoidCallback? onLongPress;
+
+  /// Swiping the bubble to the right calls this.
+  final VoidCallback? onReply;
+
+  /// Tapping the quote calls this with the quoted message's ID.
+  final ValueChanged<String>? onTapReply;
+
+  /// Briefly true after jumping here from a quote.
+  final bool highlighted;
   final double gapAbove;
 
   @override
   Widget build(BuildContext context) {
     final m = message;
     final plainImage = m.type == MessageType.image && !m.viewOnce;
-    return BubbleShell(
-      isMine: isMine,
-      gapAbove: gapAbove,
-      onLongPress: onLongPress,
-      padding: plainImage
-          ? const EdgeInsets.all(3)
-          : const EdgeInsets.fromLTRB(9, 6, 7, 5),
-      child: switch (m.type) {
-        MessageType.text => _TextContent(message: m, isMine: isMine),
-        MessageType.image when m.viewOnce => _ViewOnceContent(
-            message: m, isMine: isMine, chat: chat, senderName: senderName),
-        MessageType.image =>
-          _ImageContent(message: m, isMine: isMine, senderName: senderName),
-        MessageType.file =>
-          _FileContent(message: m, isMine: isMine, chat: chat),
-      },
+    final Widget content = switch (m.type) {
+      MessageType.text => _TextContent(message: m, isMine: isMine),
+      MessageType.image when m.viewOnce => _ViewOnceContent(
+          message: m, isMine: isMine, chat: chat, senderName: senderName),
+      MessageType.image =>
+        _ImageContent(message: m, isMine: isMine, senderName: senderName),
+      MessageType.file => _FileContent(message: m, isMine: isMine, chat: chat),
+      MessageType.audio => VoiceMessageContent(
+          message: m,
+          isMine: isMine,
+          chat: chat,
+          meta: _Meta(message: m, isMine: isMine)),
+    };
+    final reply = m.replyTo;
+    final me = isMine ? m.senderId : otherPerson(m.senderId);
+
+    return SwipeToReply(
+      onReply: onReply,
+      child: BubbleShell(
+        isMine: isMine,
+        gapAbove: gapAbove,
+        highlighted: highlighted,
+        reactions: m.reactions,
+        onLongPress: onLongPress,
+        padding: plainImage
+            ? const EdgeInsets.all(3)
+            : const EdgeInsets.fromLTRB(9, 6, 7, 5),
+        child: reply == null
+            ? content
+            : IntrinsicWidth(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(bottom: plainImage ? 3 : 5),
+                      child: ReplyQuote(
+                        reply: reply,
+                        name: replyName ?? '',
+                        fromMe: reply.senderId == me,
+                        onTap: () => onTapReply?.call(reply.id),
+                      ),
+                    ),
+                    content,
+                  ],
+                ),
+              ),
+      ),
     );
   }
 }
@@ -61,6 +115,8 @@ class BubbleShell extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.fromLTRB(9, 6, 7, 5),
     this.gapAbove = 2,
+    this.highlighted = false,
+    this.reactions = const {},
     this.onLongPress,
   });
 
@@ -68,34 +124,88 @@ class BubbleShell extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final double gapAbove;
+  final bool highlighted;
+
+  /// Shown as a small badge hanging off the bottom of the bubble.
+  final Map<String, String> reactions;
   final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final colors = ChatColors.of(context);
-    return Padding(
+    Widget bubble = Material(
+      color: isMine ? colors.mine : colors.theirs,
+      elevation: 0.6,
+      shadowColor: Colors.black26,
+      clipBehavior: Clip.antiAlias,
+      borderRadius: BorderRadius.only(
+        topLeft: Radius.circular(isMine ? 12 : 3),
+        topRight: Radius.circular(isMine ? 3 : 12),
+        bottomLeft: const Radius.circular(12),
+        bottomRight: const Radius.circular(12),
+      ),
+      child: InkWell(
+        onLongPress: onLongPress,
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+    if (reactions.isNotEmpty) {
+      // The badge overlaps the bubble's bottom edge; the padding keeps it
+      // inside the Stack so it can still be tapped.
+      bubble = Stack(
+        children: [
+          Padding(padding: const EdgeInsets.only(bottom: 18), child: bubble),
+          Positioned(
+            bottom: 0,
+            left: isMine ? null : 10,
+            right: isMine ? 10 : null,
+            child: _ReactionBadge(reactions: reactions, onTap: onLongPress),
+          ),
+        ],
+      );
+    }
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      color: highlighted
+          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.18)
+          : Colors.transparent,
       padding: EdgeInsets.only(top: gapAbove, left: 8, right: 8),
       child: Align(
         alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
           constraints: BoxConstraints(
               maxWidth: MediaQuery.sizeOf(context).width * 0.8),
-          child: Material(
-            color: isMine ? colors.mine : colors.theirs,
-            elevation: 0.6,
-            shadowColor: Colors.black26,
-            clipBehavior: Clip.antiAlias,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(isMine ? 12 : 3),
-              topRight: Radius.circular(isMine ? 3 : 12),
-              bottomLeft: const Radius.circular(12),
-              bottomRight: const Radius.circular(12),
-            ),
-            child: InkWell(
-              onLongPress: onLongPress,
-              child: Padding(padding: padding, child: child),
-            ),
-          ),
+          child: bubble,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReactionBadge extends StatelessWidget {
+  const _ReactionBadge({required this.reactions, this.onTap});
+
+  final Map<String, String> reactions;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ChatColors.of(context);
+    final emojis = reactions.values.toList();
+    final distinct = emojis.toSet();
+    // Both people picking the same emoji shows it once, with a 2.
+    final label = distinct.join() +
+        (distinct.length < emojis.length ? ' ${emojis.length}' : '');
+    return Material(
+      color: colors.theirs,
+      elevation: 1,
+      shape: StadiumBorder(side: BorderSide(color: colors.background, width: 1.5)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Text(label, style: const TextStyle(fontSize: 14)),
         ),
       ),
     );
@@ -118,6 +228,10 @@ class _Meta extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (m.edited)
+          Text('edited  ',
+              style: TextStyle(
+                  fontSize: 11, color: color, fontStyle: FontStyle.italic)),
         Text(formatTime(m.time), style: TextStyle(fontSize: 11, color: color)),
         if (isMine) ...[
           const SizedBox(width: 3),
@@ -150,7 +264,7 @@ class _TextWithMeta extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.end,
       spacing: 8,
       children: [
-        Text(text, style: const TextStyle(fontSize: 15.5, height: 1.3)),
+        LinkText(text, style: const TextStyle(fontSize: 15.5, height: 1.3)),
         Padding(padding: const EdgeInsets.only(top: 3), child: meta),
       ],
     );
@@ -216,16 +330,15 @@ class _ImageContent extends StatelessWidget {
                       ),
                       child: Hero(
                         tag: m.id,
-                        child: CachedNetworkImage(
-                          imageUrl: url,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 600,
-                          placeholder: (_, _) => const ColoredBox(
+                        child: NetworkPhoto(
+                          url: url,
+                          cacheWidth: 600,
+                          placeholder: const ColoredBox(
                             color: Colors.black12,
                             child: Center(
                                 child: CircularProgressIndicator(strokeWidth: 2)),
                           ),
-                          errorWidget: (_, _, _) => const ColoredBox(
+                          error: const ColoredBox(
                               color: Colors.black12,
                               child: Icon(Icons.broken_image_outlined)),
                         ),
@@ -357,11 +470,14 @@ class _FileContentState extends State<_FileContent> {
   }
 
   Future<void> _checkDownloaded() async {
+    // Browsers have no app storage; files open straight from their link.
+    if (kIsWeb) return;
     final file = await ChatService.localFileFor(widget.message);
     if (await file.exists() && mounted) setState(() => _downloaded = true);
   }
 
   Future<void> _open() async {
+    if (kIsWeb) return _openInBrowser();
     if (_progress != null) return;
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _progress = 0);
@@ -382,6 +498,20 @@ class _FileContentState extends State<_FileContent> {
       }
     } catch (e) {
       if (mounted) setState(() => _progress = null);
+      widget.chat.onError(e);
+    }
+  }
+
+  /// On the web, the browser downloads or previews the file in a new tab.
+  Future<void> _openInBrowser() async {
+    final url = widget.message.url;
+    if (url == null) {
+      widget.chat.onError(StateError('This file is no longer available.'));
+      return;
+    }
+    try {
+      await launchUrl(Uri.parse(url), webOnlyWindowName: '_blank');
+    } catch (e) {
       widget.chat.onError(e);
     }
   }

@@ -7,8 +7,9 @@ import '../widgets/view_once_icon.dart';
 /// Shows a view-once photo a single time.
 ///
 /// The photo is fetched straight into memory (never the disk cache). As soon
-/// as it is on screen, [onOpened] marks it opened and deletes it from
-/// Storage; when this screen closes it is dropped from memory too.
+/// as it is on screen, [onOpened] marks it opened, which moves it out of the
+/// chat into the private archive; when this screen closes it is dropped from
+/// memory too.
 /// Screenshots are blocked on Android while this screen is open.
 class ViewOnceScreen extends StatefulWidget {
   const ViewOnceScreen({
@@ -27,7 +28,9 @@ class ViewOnceScreen extends StatefulWidget {
 }
 
 class _ViewOnceScreenState extends State<ViewOnceScreen> {
-  late final NetworkImage _image = NetworkImage(widget.message.url!);
+  // In the browser, falls back to an <img> element if Storage blocks CORS.
+  late final NetworkImage _image = NetworkImage(widget.message.url!,
+      webHtmlElementStrategy: WebHtmlElementStrategy.fallback);
   bool _reported = false;
 
   @override

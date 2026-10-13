@@ -16,9 +16,12 @@ typedef ProgressCallback = void Function(double progress);
 /// Firestore layout:
 ///   chats/{kChatId}/messages/{messageId}
 ///   chats/{kChatId}/members/{p1|p2}   name + presence
+///   chats/{kChatId}/deleted/{messageId}   archive, written by Cloud Functions
 /// Storage layout:
 ///   chats/{kChatId}/images/{messageId}.{ext}
 ///   chats/{kChatId}/files/{messageId}/{fileName}
+///   chats/{kChatId}/audio/{messageId}.{m4a|webm}   voice messages
+///   chats/{kChatId}/deleted/{messageId}/{name}   archive, Cloud Functions only
 class ChatService {
   ChatService(this.me, {required this.onError});
 
@@ -63,6 +66,23 @@ class ChatService {
       .doc(me)
       .set({'typing': typing}, SetOptions(merge: true)).ignore();
 
+  /// Shows "recording audio…" to the other person.
+  void setRecording(bool recording) => _members
+      .doc(me)
+      .set({'recording': recording}, SetOptions(merge: true)).ignore();
+
+  /// Push notification tokens, one per phone or browser this person uses.
+  /// The `notifyNewMessage` Cloud Function sends to them.
+  static Future<void> addPushToken(String personId, String token) =>
+      _members.doc(personId).set({
+        'pushTokens': FieldValue.arrayUnion([token]),
+      }, SetOptions(merge: true));
+
+  static Future<void> removePushToken(String personId, String token) =>
+      _members.doc(personId).set({
+        'pushTokens': FieldValue.arrayRemove([token]),
+      }, SetOptions(merge: true));
+
   // --------------------------------------------------------------- messages
 
   /// Newest first.
@@ -72,10 +92,30 @@ class ChatService {
       .snapshots(includeMetadataChanges: true)
       .map((s) => s.docs.map(Message.fromDoc).toList());
 
-  void sendText(String text) => _write(_messages.add({
-        ..._base(MessageType.text),
+  void sendText(String text, {ReplyRef? replyTo}) => _write(_messages.add({
+        ..._base(MessageType.text, replyTo),
         'text': text,
       }));
+
+  /// Changes the text of one of my messages. The `archiveEditedMessage`
+  /// Cloud Function keeps the previous version in the archive.
+  void editText(Message m, String text) => _write(_messages.doc(m.id).update({
+        'text': text,
+        'edited': true,
+        'editedAt': FieldValue.serverTimestamp(),
+      }));
+
+  /// Sets my reaction to [m], or removes it when [emoji] is null.
+  void react(Message m, String? emoji) => _write(_messages.doc(m.id).update({
+        'reactions.$me': emoji ?? FieldValue.delete(),
+      }));
+
+  /// Called when I play a voice message the other person sent.
+  void markPlayed(Message m) {
+    if (m.senderId == other && !m.played) {
+      _write(_messages.doc(m.id).update({'played': true}));
+    }
+  }
 
   Future<void> sendImage({
     required Uint8List bytes,
@@ -84,6 +124,7 @@ class ChatService {
     required int height,
     String? caption,
     bool viewOnce = false,
+    ReplyRef? replyTo,
     ProgressCallback? onProgress,
   }) async {
     final doc = _messages.doc();
@@ -92,7 +133,7 @@ class ChatService {
     final url = await _upload(path,
         bytes: bytes, mimeType: mimeType, onProgress: onProgress);
     _write(doc.set({
-      ..._base(MessageType.image),
+      ..._base(MessageType.image, replyTo),
       if (caption != null && caption.isNotEmpty) 'text': caption,
       'url': url,
       'storagePath': path,
@@ -104,9 +145,35 @@ class ChatService {
     }));
   }
 
+  Future<void> sendAudio({
+    required Uint8List bytes,
+    required String mimeType,
+    required String extension,
+    required Duration duration,
+    required List<int> waveform,
+    ReplyRef? replyTo,
+    ProgressCallback? onProgress,
+  }) async {
+    final doc = _messages.doc();
+    final path = 'chats/$kChatId/audio/${doc.id}.$extension';
+    final url = await _upload(path,
+        bytes: bytes, mimeType: mimeType, onProgress: onProgress);
+    _write(doc.set({
+      ..._base(MessageType.audio, replyTo),
+      'url': url,
+      'storagePath': path,
+      'mimeType': mimeType,
+      'fileSize': bytes.length,
+      'durationMs': duration.inMilliseconds,
+      'waveform': waveform,
+      'played': false,
+    }));
+  }
+
   Future<void> sendFile(
     PlatformFile picked, {
     required int size,
+    ReplyRef? replyTo,
     ProgressCallback? onProgress,
   }) async {
     final doc = _messages.doc();
@@ -121,7 +188,7 @@ class ChatService {
       onProgress: onProgress,
     );
     _write(doc.set({
-      ..._base(MessageType.file),
+      ..._base(MessageType.file, replyTo),
       'url': url,
       'storagePath': path,
       'fileName': picked.name,
@@ -142,20 +209,21 @@ class ChatService {
     _write(batch.commit());
   }
 
-  /// Called by the receiver once a view-once photo is on screen: the photo is
-  /// deleted from Storage and its link removed, so it can't be opened again.
+  /// Called by the receiver once a view-once photo is on screen: its link is
+  /// removed so it can't be opened again. The `archiveOpenedViewOnce` Cloud
+  /// Function then moves the photo into the private `deleted` archive.
   Future<void> markViewOnceOpened(Message m) async {
     _write(_messages.doc(m.id).update({
       'opened': true,
       'openedAt': FieldValue.serverTimestamp(),
       'url': FieldValue.delete(),
     }));
-    await _deleteObject(m.storagePath);
   }
 
+  /// Removes the message from the chat. The `archiveDeletedMessage` Cloud
+  /// Function keeps a copy, and its photo or file, in the `deleted` archive.
   Future<void> deleteMessage(Message m) async {
     _write(_messages.doc(m.id).delete());
-    await _deleteObject(m.storagePath);
   }
 
   // ------------------------------------------------------------------ files
@@ -189,11 +257,12 @@ class ChatService {
 
   // ---------------------------------------------------------------- helpers
 
-  Map<String, dynamic> _base(MessageType type) => {
+  Map<String, dynamic> _base(MessageType type, [ReplyRef? replyTo]) => {
         'senderId': me,
         'type': type.name,
         'seen': false,
         'createdAt': FieldValue.serverTimestamp(),
+        if (replyTo != null) 'replyTo': replyTo.toMap(),
       };
 
   void _write(Future<Object?> write) => write.then((_) {}, onError: onError);
@@ -218,15 +287,6 @@ class ChatService {
       await sub.cancel();
     }
     return ref.getDownloadURL();
-  }
-
-  Future<void> _deleteObject(String? path) async {
-    if (path == null) return;
-    try {
-      await _storage.ref(path).delete();
-    } on FirebaseException catch (e) {
-      if (e.code != 'object-not-found') onError(e);
-    }
   }
 
   static String _safeName(String name) =>

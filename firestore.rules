@@ -11,16 +11,31 @@ service cloud.firestore {
         allow read, delete: if true;
 
         allow create: if request.resource.data.senderId in ['p1', 'p2']
-                      && request.resource.data.type in ['text', 'image', 'file'];
+                      && request.resource.data.type in ['text', 'image', 'file', 'audio'];
 
-        // After sending, only read receipts and view-once state may change.
-        allow update: if request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['seen', 'opened', 'openedAt', 'url']);
+        // After sending, only read receipts, view-once and voice-played state,
+        // reactions, and the words of a text message (an edit) may change.
+        allow update: if changed().hasOnly(['seen', 'opened', 'openedAt', 'url', 'played',
+                                            'reactions', 'text', 'edited', 'editedAt'])
+                      && (!changed().hasAny(['text', 'edited', 'editedAt'])
+                          || resource.data.type == 'text')
+                      && (!('reactions' in request.resource.data)
+                          || request.resource.data.reactions.keys().hasOnly(['p1', 'p2']));
+
+        function changed() {
+          return request.resource.data.diff(resource.data).affectedKeys();
+        }
       }
 
       match /members/{personId} {
         allow read: if true;
         allow write: if personId in ['p1', 'p2'];
+      }
+
+      // Archive of opened view-once photos and deleted messages. Written by
+      // Cloud Functions only; visible only in the Firebase console.
+      match /deleted/{messageId} {
+        allow read, write: if false;
       }
     }
   }

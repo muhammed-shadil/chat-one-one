@@ -43,6 +43,7 @@ class _PresenceTitleState extends State<PresenceTitle> {
         final name = member?.name ?? 'Waiting for them to join';
         final status = switch (member) {
           null => '',
+          Member(isOnline: true, recording: true) => 'recording audio…',
           Member(isOnline: true, typing: true) => 'typing…',
           Member(isOnline: true) => 'online',
           Member(:final lastSeen?) => formatLastSeen(lastSeen),
