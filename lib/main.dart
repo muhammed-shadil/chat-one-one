@@ -8,6 +8,7 @@ import 'firebase_options.dart';
 import 'screens/chat_screen.dart';
 import 'screens/setup_screen.dart';
 import 'services/identity.dart';
+import 'services/theme_settings.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -18,24 +19,33 @@ Future<void> main() async {
     await FirebaseStorage.instance.useStorageEmulator('127.0.0.1', 9199);
   }
   final me = await Identity.load();
-  runApp(ChatApp(me: me));
+  final themeSettings = await ThemeSettings.load();
+  runApp(ChatApp(me: me, themeSettings: themeSettings));
 }
 
 class ChatApp extends StatelessWidget {
-  const ChatApp({super.key, this.me});
+  const ChatApp({super.key, this.me, required this.themeSettings});
 
   /// Which person this phone belongs to, or null on first launch.
   final String? me;
+  final ThemeSettings themeSettings;
 
   @override
   Widget build(BuildContext context) {
     final me = this.me;
-    return MaterialApp(
-      title: 'Chat One One',
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(Brightness.light),
-      darkTheme: buildTheme(Brightness.dark),
-      home: me == null ? const SetupScreen() : ChatScreen(me: me),
+    return ThemeSettingsScope(
+      settings: themeSettings,
+      child: ListenableBuilder(
+        listenable: themeSettings,
+        builder: (context, _) => MaterialApp(
+          title: 'Chat One One',
+          debugShowCheckedModeBanner: false,
+          theme: buildTheme(Brightness.light, themeSettings.palette),
+          darkTheme: buildTheme(Brightness.dark, themeSettings.palette),
+          themeMode: themeSettings.mode,
+          home: me == null ? const SetupScreen() : ChatScreen(me: me),
+        ),
+      ),
     );
   }
 }

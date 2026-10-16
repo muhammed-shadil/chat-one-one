@@ -28,7 +28,10 @@ launch, each phone picks **Person 1** or **Person 2** and enters a name, and tha
 - Long-press a message to copy it, or to delete your own message for everyone
   (a copy is kept in the archive)
 - On the website, Enter sends and Shift+Enter starts a new line
-- Light and dark themes, and messages still show offline (Firestore cache)
+- **Chat themes:** menu → Chat theme. Six color themes (Classic green, Ocean
+  blue, Lavender, Rose, Sunset, Midnight), each in Light, Dark or follow the
+  system. Saved per device, so each person picks their own.
+- Messages still show offline (Firestore cache)
 
 ## What's required
 
@@ -151,7 +154,9 @@ lib/
   services/push.dart          push notification permission and tokens
   services/voice_recorder.dart, voice_player.dart   voice messages
   services/secure_screen.dart screenshot blocking for view once
-  screens/                    setup, chat, image preview / viewer, view once
+  services/theme_settings.dart  the chosen theme, saved on this device
+  theme.dart                  the color themes
+  screens/                    setup, chat, chat theme, image preview / viewer, view once
   widgets/                    message bubbles, voice player, reply quotes,
                               links, swipe to reply, header with presence
 functions/index.js            archive + push notifications

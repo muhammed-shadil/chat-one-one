@@ -22,6 +22,7 @@ import '../widgets/reply_quote.dart';
 import '../widgets/voice_message.dart';
 import 'image_preview_screen.dart';
 import 'setup_screen.dart';
+import 'theme_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key, required this.me});
@@ -651,6 +652,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
+                case 'theme':
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => const ThemeScreen()));
                 case 'rename':
                   _rename();
                 case 'switch':
@@ -658,6 +662,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               }
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'theme', child: Text('Chat theme')),
               PopupMenuItem(value: 'rename', child: Text('Change my name')),
               PopupMenuItem(value: 'switch', child: Text('Switch person')),
             ],
@@ -885,9 +890,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       style: IconButton.styleFrom(
         fixedSize: const Size(48, 48),
         backgroundColor: scheme.primary,
-        foregroundColor: Colors.white,
+        foregroundColor: scheme.onPrimary,
         disabledBackgroundColor: scheme.primary.withValues(alpha: 0.45),
-        disabledForegroundColor: Colors.white70,
+        disabledForegroundColor: scheme.onPrimary.withValues(alpha: 0.7),
       ),
       icon: Icon(icon),
     );

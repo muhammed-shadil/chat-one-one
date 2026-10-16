@@ -116,8 +116,8 @@ class ReplyQuote extends StatelessWidget {
       text: text,
       icon: icon,
       accent: fromMe
-          ? Theme.of(context).colorScheme.primary
-          : const Color(0xFFA67CF0),
+          ? ChatColors.of(context).myAccent
+          : ChatColors.of(context).otherAccent,
       onTap: onTap,
       onClose: onClose,
       closeTooltip: 'Cancel reply',
