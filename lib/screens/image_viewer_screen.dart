@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/message.dart';
 import '../utils/format.dart';
 import '../widgets/network_photo.dart';
+import '../widgets/private_view.dart';
 
 /// Full-screen, zoomable photo.
 class ImageViewerScreen extends StatelessWidget {
@@ -37,18 +38,20 @@ class ImageViewerScreen extends StatelessWidget {
       body: Column(
         children: [
           Expanded(
-            child: InteractiveViewer(
-              maxScale: 5,
-              child: Center(
-                child: Hero(
-                  tag: message.id,
-                  child: NetworkPhoto(
-                    url: message.url ?? '',
-                    fit: BoxFit.contain,
-                    placeholder:
-                        const CircularProgressIndicator(color: Colors.white),
-                    error: const Icon(Icons.broken_image_outlined,
-                        color: Colors.white54, size: 64),
+            child: PrivateView(
+              child: InteractiveViewer(
+                maxScale: 5,
+                child: Center(
+                  child: Hero(
+                    tag: message.id,
+                    child: NetworkPhoto(
+                      url: message.url ?? '',
+                      fit: BoxFit.contain,
+                      placeholder:
+                          const CircularProgressIndicator(color: Colors.white),
+                      error: const Icon(Icons.broken_image_outlined,
+                          color: Colors.white54, size: 64),
+                    ),
                   ),
                 ),
               ),

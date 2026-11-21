@@ -9,8 +9,9 @@ launch, each phone picks **Person 1** or **Person 2** and enters a name, and tha
 - Photos from the camera or gallery, with an optional caption
 - **View once** photos: the receiver can open them a single time. As soon as
   it's opened the photo leaves the chat and moves to the private
-  [archive](#archive-of-opened-deleted-and-edited-messages), and screenshots are
-  blocked on Android while it's on screen.
+  [archive](#archive-of-opened-deleted-and-edited-messages).
+- **No screenshots or screen recording** anywhere in the Android app (see
+  [Screenshot protection](#screenshot-protection)).
 - Files of any type (PDF, DOC, ZIP, APK, …) up to 100 MB. Tap a file to download and open it.
 - **Voice messages:** tap the mic to record, then send or delete. They play
   with a waveform you can tap or drag to seek, at 1×, 1.5× or 2×. The mic
@@ -84,8 +85,17 @@ If a new plugin doesn't work on the website after `flutter pub add`, delete
 `.dart_tool/flutter_build` and build again: Flutter can keep using an old list
 of web plugins.
 
-In the browser, files open in a new tab instead of being saved in the app, and
-screenshots can't be blocked for view once photos.
+In the browser, files open in a new tab instead of being saved in the app.
+
+## Screenshot protection
+
+| Where | What's protected |
+|---|---|
+| **Android app** | Every screen: screenshots and screen recordings come out black, and the app is blank in the recent-apps switcher and when casting (`FLAG_SECURE`, set in `MainActivity.kt`). |
+| **Website** | Browsers can't block screenshots or recording. As a deterrent, full-screen photos and view once photos are covered whenever the window loses focus or the tab is hidden (`lib/widgets/private_view.dart`); photos can't be saved or dragged out with the mouse; and printing / "Save as PDF" shows a blank page (`web/index.html`). |
+| **iPhone app** | iOS has no supported way to block screenshots, so nothing extra. |
+
+No app can stop someone photographing the screen with another phone.
 
 ## Push notifications
 
@@ -153,7 +163,6 @@ lib/
   services/identity.dart      remembers who this phone is
   services/push.dart          push notification permission and tokens
   services/voice_recorder.dart, voice_player.dart   voice messages
-  services/secure_screen.dart screenshot blocking for view once
   services/theme_settings.dart  the chosen theme, saved on this device
   theme.dart                  the color themes
   screens/                    setup, chat, chat theme, image preview / viewer, view once

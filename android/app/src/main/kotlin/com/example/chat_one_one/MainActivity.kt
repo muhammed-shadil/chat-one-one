@@ -6,11 +6,16 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Block screenshots and screen recording everywhere in the app (they
+        // come out black), before anything is drawn. This also blanks the app
+        // in the recent-apps switcher and on screen casting.
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
         super.onCreate(savedInstanceState)
 
         // High importance, so new messages pop up on screen. Push notifications
@@ -22,25 +27,5 @@ class MainActivity : FlutterActivity() {
             getSystemService(NotificationManager::class.java)
                 .createNotificationChannel(channel)
         }
-    }
-
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-
-        // Blocks screenshots / screen recording while a view-once photo is open.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "chat_one_one/secure_screen")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "enable" -> {
-                        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                        result.success(null)
-                    }
-                    "disable" -> {
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                        result.success(null)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
     }
 }

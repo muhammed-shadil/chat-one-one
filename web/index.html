@@ -31,6 +31,29 @@
 
   <title>Chat One One</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Keeps the chat out of printouts and "Save as PDF". -->
+  <style>
+    @media print {
+      html, body { display: none !important; }
+    }
+  </style>
+  <script>
+    // Photos can be shown as <img> elements. Don't offer "Save image as…",
+    // "Copy image" or "Open image in new tab" for them, or let them be
+    // dragged out. Other right-click menus, such as in the message box, stay.
+    (function () {
+      function isPhoto(event) {
+        var target = event.composedPath ? event.composedPath()[0] : event.target;
+        return target instanceof HTMLImageElement;
+      }
+      ['contextmenu', 'dragstart'].forEach(function (type) {
+        document.addEventListener(type, function (event) {
+          if (isPhoto(event)) event.preventDefault();
+        }, true);
+      });
+    })();
+  </script>
 </head>
 <body>
   <!--

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/message.dart';
-import '../services/secure_screen.dart';
+import '../widgets/private_view.dart';
 import '../widgets/view_once_icon.dart';
 
 /// Shows a view-once photo a single time.
@@ -10,7 +10,8 @@ import '../widgets/view_once_icon.dart';
 /// as it is on screen, [onOpened] marks it opened, which moves it out of the
 /// chat into the private archive; when this screen closes it is dropped from
 /// memory too.
-/// Screenshots are blocked on Android while this screen is open.
+/// Screenshots are blocked app-wide on Android; on the website the photo is
+/// hidden while the window isn't in focus ([PrivateView]).
 class ViewOnceScreen extends StatefulWidget {
   const ViewOnceScreen({
     super.key,
@@ -34,14 +35,7 @@ class _ViewOnceScreenState extends State<ViewOnceScreen> {
   bool _reported = false;
 
   @override
-  void initState() {
-    super.initState();
-    SecureScreen.enable();
-  }
-
-  @override
   void dispose() {
-    SecureScreen.disable();
     _image.evict();
     super.dispose();
   }
@@ -72,29 +66,31 @@ class _ViewOnceScreenState extends State<ViewOnceScreen> {
       body: Column(
         children: [
           Expanded(
-            child: InteractiveViewer(
-              maxScale: 5,
-              child: Center(
-                child: Image(
-                  image: _image,
-                  fit: BoxFit.contain,
-                  frameBuilder: (context, child, frame, _) {
-                    if (frame != null) _shown();
-                    return child;
-                  },
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    final total = progress.expectedTotalBytes;
-                    return CircularProgressIndicator(
-                      color: Colors.white,
-                      value: total == null
-                          ? null
-                          : progress.cumulativeBytesLoaded / total,
-                    );
-                  },
-                  errorBuilder: (context, _, _) => const Text(
-                    'This photo could not be loaded.',
-                    style: TextStyle(color: Colors.white70),
+            child: PrivateView(
+              child: InteractiveViewer(
+                maxScale: 5,
+                child: Center(
+                  child: Image(
+                    image: _image,
+                    fit: BoxFit.contain,
+                    frameBuilder: (context, child, frame, _) {
+                      if (frame != null) _shown();
+                      return child;
+                    },
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      final total = progress.expectedTotalBytes;
+                      return CircularProgressIndicator(
+                        color: Colors.white,
+                        value: total == null
+                            ? null
+                            : progress.cumulativeBytesLoaded / total,
+                      );
+                    },
+                    errorBuilder: (context, _, _) => const Text(
+                      'This photo could not be loaded.',
+                      style: TextStyle(color: Colors.white70),
+                    ),
                   ),
                 ),
               ),
