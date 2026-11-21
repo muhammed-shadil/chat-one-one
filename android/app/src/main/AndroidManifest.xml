@@ -1,8 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Release builds need this explicitly (debug builds add it automatically). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Voice messages. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Sharing the location one time, only while the app is open and only
+         after tapping "Share My Location". There is deliberately no
+         ACCESS_BACKGROUND_LOCATION. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 
     <application
         android:label="Chat One One"
@@ -40,6 +46,11 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification" />
+        <!-- geolocator's service for tracking in the background. The app only
+             reads the location once, so it's left out of the app entirely. -->
+        <service
+            android:name="com.baseflow.geolocator.GeolocatorLocationService"
+            tools:node="remove" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

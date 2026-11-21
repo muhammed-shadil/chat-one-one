@@ -8,10 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../config.dart';
+import '../core/config/feature_flags.dart';
 import '../models/message.dart';
 import '../services/chat_service.dart';
 import '../services/identity.dart';
 import '../services/push.dart';
+import '../services/surprise_prompt.dart';
 import '../services/voice_player.dart';
 import '../services/voice_recorder.dart';
 import '../theme.dart';
@@ -22,6 +24,8 @@ import '../widgets/reply_quote.dart';
 import '../widgets/voice_message.dart';
 import 'image_preview_screen.dart';
 import 'setup_screen.dart';
+import 'shared_location_screen.dart';
+import 'surprise_screen.dart';
 import 'theme_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -94,6 +98,31 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           onError: (_) {}));
     _goOnline();
     if (!kUseEmulators) Push.register(widget.me);
+    if (FeatureFlags.enableSurpriseLocation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowSurprise());
+    }
+  }
+
+  /// Opens the surprise screen when the app starts, as often as
+  /// [FeatureFlags] says. It only invites: sharing needs a tap on it.
+  Future<void> _maybeShowSurprise() async {
+    if (!await SurprisePrompt.takeTurn(widget.me)) return;
+    // Wait briefly for the other person's name, which the screen mentions.
+    var name = _otherName;
+    if (name == null) {
+      try {
+        name = (await _chat
+                .watchMember(_chat.other)
+                .first
+                .timeout(const Duration(seconds: 3)))
+            .name;
+      } catch (_) {
+        // Shown without the name.
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context)
+        .push(SurpriseScreen.route(chat: _chat, partnerName: name));
   }
 
   @override
@@ -655,16 +684,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 case 'theme':
                   Navigator.of(context).push(MaterialPageRoute<void>(
                       builder: (_) => const ThemeScreen()));
+                case 'location':
+                  Navigator.of(context).push(MaterialPageRoute<void>(
+                      builder: (_) => SharedLocationScreen(
+                          chat: _chat, partnerName: _otherName)));
                 case 'rename':
                   _rename();
                 case 'switch':
                   _switchPerson();
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'theme', child: Text('Chat theme')),
-              PopupMenuItem(value: 'rename', child: Text('Change my name')),
-              PopupMenuItem(value: 'switch', child: Text('Switch person')),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'theme', child: Text('Chat theme')),
+              if (FeatureFlags.enableSurpriseLocation)
+                const PopupMenuItem(
+                    value: 'location', child: Text('Shared location')),
+              const PopupMenuItem(
+                  value: 'rename', child: Text('Change my name')),
+              const PopupMenuItem(
+                  value: 'switch', child: Text('Switch person')),
             ],
           ),
         ],

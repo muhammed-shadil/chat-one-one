@@ -72,5 +72,7 @@
 	<string>Take photos to send in the chat.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record voice messages, and sound for the camera.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Share your current location one time, when you choose to. It is never tracked.</string>
 </dict>
 </plist>

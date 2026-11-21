@@ -32,6 +32,38 @@ service cloud.firestore {
         allow write: if personId in ['p1', 'p2'];
       }
 
+      // A location someone chose to share one time (no tracking), one per
+      // person: sharing again replaces it, so there are never duplicates.
+      // It can't be listed, only fetched by person, and once it expires
+      // (kLocationRetention in lib/config.dart, 30 days at most) it can't be
+      // read at all, only deleted. Deleting removes it for good: unlike
+      // messages, nothing is archived.
+      match /locations/{personId} {
+        allow get: if personId in ['p1', 'p2']
+                   && (resource == null || resource.data.expiresAt > request.time);
+        allow create, update: if personId in ['p1', 'p2'] && isValidLocation();
+        allow delete: if personId in ['p1', 'p2'];
+
+        function isValidLocation() {
+          let d = request.resource.data;
+          let fields = ['userId', 'latitude', 'longitude', 'accuracy',
+                        'capturedAt', 'sharedAt', 'expiresAt', 'sharingType'];
+          return d.keys().hasAll(fields) && d.keys().hasOnly(fields)
+              && d.userId == personId
+              && d.sharingType == 'one_time'
+              && d.latitude is number && d.latitude >= -90 && d.latitude <= 90
+              && d.longitude is number && d.longitude >= -180 && d.longitude <= 180
+              // Meters; same limit as LocationFix.maxAccuracy.
+              && d.accuracy is number && d.accuracy >= 0 && d.accuracy <= 100000
+              && d.capturedAt is timestamp
+              && d.capturedAt < request.time + duration.value(1, 'h')
+              && d.sharedAt == request.time
+              && d.expiresAt is timestamp
+              && d.expiresAt > request.time
+              && d.expiresAt <= request.time + duration.value(30, 'd');
+        }
+      }
+
       // Archive of opened view-once photos and deleted messages. Written by
       // Cloud Functions only; visible only in the Firebase console.
       match /deleted/{messageId} {

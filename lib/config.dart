@@ -23,3 +23,8 @@ const int kMaxUploadBytes = 100 * 1024 * 1024;
 /// How many messages to load at first, and how many more each time the user
 /// scrolls to the top.
 const int kPageSize = 40;
+
+/// How long a shared location stays visible. After this the security rules
+/// hide it and the app deletes it. At most 30 days: `firestore.rules`
+/// refuses anything longer.
+const Duration kLocationRetention = Duration(days: 7);

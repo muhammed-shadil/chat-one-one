@@ -33,6 +33,8 @@ launch, each phone picks **Person 1** or **Person 2** and enters a name, and tha
   blue, Lavender, Rose, Sunset, Midnight), each in Light, Dark or follow the
   system. Saved per device, so each person picks their own.
 - Messages still show offline (Firestore cache)
+- **One-time location sharing** (behind a feature flag): see
+  [below](#one-time-location-sharing).
 
 ## What's required
 
@@ -132,8 +134,8 @@ archived files have no download link. View them in the Firebase console under
 ## Testing
 
 ```sh
-flutter test                 # unit tests
-cd functions && npm test     # archive, notifications + security rules, on local emulators
+flutter test                 # unit and widget tests (location sharing uses mock coordinates)
+cd functions && npm test     # archive, notifications, locations + security rules, on local emulators
 ```
 
 `npm test` runs against the Firebase emulators, never the real project, and
@@ -141,6 +143,45 @@ needs Java 21 or newer (Android Studio's bundled `jbr` works: point `JAVA_HOME`
 at it). To try the whole app against the emulators, run
 `firebase emulators:start --only firestore,storage,functions` and build the app
 with `--dart-define=USE_EMULATORS=true`.
+
+## One-time location sharing
+
+Switched on and off in `lib/core/config/feature_flags.dart`:
+
+| Flag | What it does |
+|---|---|
+| `enableSurpriseLocation` | `false` removes the whole feature: no screen, no menu item, the location is never asked for or read. |
+| `showOnEveryAppOpen` | `true` opens the invitation each time the app starts (for testing). `false` opens it once per person on each device; after that it's in the menu under **Shared location**. |
+
+When the app starts, a full-screen invitation opens. Choosing **Share My
+Location** asks for location permission (only then, and only "while using the
+app"), reads the position **once**, and saves it. **Maybe Later** or ✕ closes
+it with nothing asked. Menu → **Shared location** shows the other person's
+location on a map (OpenStreetMap), with coordinates, when it was captured, its
+accuracy, and **Open in Maps**. It also shows whether your own location is
+shared, with **Stop sharing**, or a button to share yours once.
+
+- **Stored** in `chats/<chat ID>/locations/<p1|p2>`, one document per person,
+  so sharing again replaces it (no duplicates). Fields: `userId`, `latitude`,
+  `longitude`, `accuracy` (meters), `capturedAt`, `sharedAt` (server time),
+  `expiresAt`, `sharingType: "one_time"`.
+- **Rules:** coordinates must be real, the document ID must match `userId`, the
+  collection can't be listed, and nothing is archived when deleted. Like the
+  messages, it's protected by the chat ID, not by accounts.
+- **Retention:** `kLocationRetention` in `lib/config.dart` (7 days; the rules
+  allow 30 at most). After that the rules refuse to return it and the app
+  deletes it when the Shared location screen is opened. For deletion even if
+  nobody opens it, turn on a Firestore TTL policy (one time):
+  ```sh
+  gcloud firestore fields ttls update expiresAt --collection-group=locations --enable-ttl --project=<your-project-id>
+  ```
+- **No tracking:** there is no position stream and no background location.
+  Android asks only for `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`, and
+  geolocator's background service is removed from the manifest. iOS has only
+  `NSLocationWhenInUseUsageDescription`.
+
+The new `locations` rules must be deployed (`firebase deploy --only
+firestore:rules`) before sharing works against the real project.
 
 ## How privacy works without accounts
 
@@ -157,15 +198,21 @@ To use a new ID, change it in `lib/config.dart`, `firestore.rules` and
 ```
 lib/
   config.dart                 chat ID, limits, emulator switch
+  core/config/feature_flags.dart   switches for optional features
   main.dart                   Firebase init, first-launch routing
   models/message.dart         Message, ReplyRef, Member
+  models/shared_location.dart a location shared one time
   services/chat_service.dart  all Firestore / Storage reads and writes
   services/identity.dart      remembers who this phone is
   services/push.dart          push notification permission and tokens
   services/voice_recorder.dart, voice_player.dart   voice messages
   services/theme_settings.dart  the chosen theme, saved on this device
+  services/location_service.dart  reads the location once, with permission
+  services/surprise_prompt.dart   when the location invitation opens by itself
   theme.dart                  the color themes
-  screens/                    setup, chat, chat theme, image preview / viewer, view once
+  screens/                    setup, chat, chat theme, image preview / viewer, view once,
+                              location invitation, shared location
+  widgets/surprise_effects.dart   gradient, glass, hearts, confetti
   widgets/                    message bubbles, voice player, reply quotes,
                               links, swipe to reply, header with presence
 functions/index.js            archive + push notifications

@@ -10,12 +10,14 @@ import 'package:path_provider/path_provider.dart';
 
 import '../config.dart';
 import '../models/message.dart';
+import '../models/shared_location.dart';
 
 typedef ProgressCallback = void Function(double progress);
 
 /// Firestore layout:
 ///   chats/{kChatId}/messages/{messageId}
 ///   chats/{kChatId}/members/{p1|p2}   name + presence
+///   chats/{kChatId}/locations/{p1|p2}   a location shared one time
 ///   chats/{kChatId}/deleted/{messageId}   archive, written by Cloud Functions
 /// Storage layout:
 ///   chats/{kChatId}/images/{messageId}.{ext}
@@ -40,6 +42,8 @@ class ChatService {
       _chat.collection('messages');
   static CollectionReference<Map<String, dynamic>> get _members =>
       _chat.collection('members');
+  static CollectionReference<Map<String, dynamic>> get _locations =>
+      _chat.collection('locations');
 
   // ---------------------------------------------------------------- members
 
@@ -225,6 +229,52 @@ class ChatService {
   Future<void> deleteMessage(Message m) async {
     _write(_messages.doc(m.id).delete());
   }
+
+  // -------------------------------------------------------------- locations
+
+  /// Shares my location one time, replacing any earlier one of mine (so a
+  /// retry or a second share never makes a duplicate). It is hidden, then
+  /// deleted, after [kLocationRetention].
+  ///
+  /// Unlike messages this waits for the server, so success is only shown
+  /// once it's really saved. Offline, it gives up waiting after [timeout]
+  /// with a [TimeoutException], but Firestore still sends it once back
+  /// online.
+  Future<void> shareLocation(
+    LocationFix fix, {
+    Duration timeout = const Duration(seconds: 15),
+  }) {
+    if (!fix.isValid) throw ArgumentError('Not a real location.');
+    final location = SharedLocation(
+      userId: me,
+      fix: fix,
+      expiresAt: DateTime.now().add(kLocationRetention),
+    );
+    return _locations.doc(me).set(location.toFirestore()).timeout(timeout);
+  }
+
+  /// The location [personId] shared, or null when there is none. Expired
+  /// ones count as none: the rules refuse to return them, and they are
+  /// deleted here when that happens.
+  Stream<SharedLocation?> watchSharedLocation(String personId) async* {
+    final doc = _locations.doc(personId);
+    try {
+      await for (final snap in doc.snapshots()) {
+        final location = SharedLocation.fromMap(snap.id, snap.data());
+        yield location == null || location.isExpired() ? null : location;
+      }
+    } on FirebaseException catch (e) {
+      if (e.code != 'permission-denied') rethrow;
+      // Reads of an existing document are only refused once it's expired.
+      doc.delete().ignore();
+      yield null;
+    }
+  }
+
+  /// Removes a shared location: mine (stop sharing) or the other person's
+  /// (I've seen it). It is deleted outright, not archived.
+  void deleteSharedLocation(String personId) =>
+      _write(_locations.doc(personId).delete());
 
   // ------------------------------------------------------------------ files
 

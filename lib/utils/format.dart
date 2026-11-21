@@ -63,6 +63,28 @@ String formatLastSeen(DateTime t, {DateTime? now}) {
   return 'last seen $when at ${formatTime(t)}';
 }
 
+/// "Today at 3:42 PM", "2 March at 9:05 AM".
+String formatMoment(DateTime t, {DateTime? now}) {
+  final local = t.toLocal();
+  return '${formatDay(local, now: now)} at ${formatTime(local)}';
+}
+
+/// "12.971599, 77.594566": six decimals is about 10 cm.
+String formatCoordinates(double latitude, double longitude) =>
+    '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
+
+/// "± 12 m", "± 1.5 km".
+String formatAccuracy(double meters) => meters < 1000
+    ? '± ${meters.round()} m'
+    : '± ${(meters / 1000).toStringAsFixed(meters < 10000 ? 1 : 0)} km';
+
+/// "7 days", "1 day", "12 hours".
+String formatRetention(Duration d) {
+  if (d.inDays >= 1) return d.inDays == 1 ? '1 day' : '${d.inDays} days';
+  final hours = d.inHours < 1 ? 1 : d.inHours;
+  return hours == 1 ? '1 hour' : '$hours hours';
+}
+
 String fileExtension(String? name) {
   if (name == null) return '';
   final dot = name.lastIndexOf('.');
