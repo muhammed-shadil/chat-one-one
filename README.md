@@ -42,7 +42,7 @@ launch, each phone picks **Person 1** or **Person 2** and enters a name, and tha
 | A Firebase project | backend |
 | **Cloud Firestore** | stores messages, names, and online status |
 | **Cloud Storage for Firebase** | stores photos, files and voice messages |
-| **Cloud Functions** | keeps the archive, and sends push notifications |
+| **Cloud Functions** | keeps the archive, sends push notifications, and runs the [admin page](#admin-page-every-photo) |
 | **Blaze (pay-as-you-go) plan** | Google requires it to enable Cloud Storage and Cloud Functions. Two people chatting stay inside the free quota (5 GB stored, 1 GB downloaded per day, 50k Firestore reads per day), so the expected cost is ₹0. Set a budget alert to be safe. |
 | Two Android phones | iPhone works too, but it has to be built on a Mac |
 
@@ -126,14 +126,68 @@ as always ("Opened", the message disappears, "edited"), and Cloud Functions in
 | Storage `chats/<chat ID>/deleted/<message ID>/` | the photo, file or voice message |
 
 The app can't read or change the archive (the security rules block it), and the
-archived files have no download link. View them in the Firebase console under
+archived files have no download link. View them on the
+[admin page](#admin-page-every-photo), or in the Firebase console under
 *Firestore Database* and *Storage*.
+
+## Admin page: every photo
+
+The website has a private page at
+<https://chat-one-one-66cbf.web.app/admin/photos> that shows every photo the
+chat has ever held, newest first and grouped by day, straight away:
+
+| Label | What it is |
+|---|---|
+| In chat | photos still in the chat, including images sent as a file |
+| View once, not opened | view once photos the other person hasn't opened yet |
+| View once, opened | opened view once photos, from the archive |
+| Deleted | photos deleted for everyone, from the archive |
+| Storage only | image files in Storage that no message points to, e.g. a send that was interrupted (only shown if there are any) |
+
+Filter by kind and by person. Click a photo to see it full screen with when it
+was sent, opened or deleted, its caption, size and Storage path; swipe or use
+the arrow keys to go through them, and Esc to close.
+
+Opening this page never opens the chat: nobody shows as online, nothing is
+marked seen, and view once photos stay unopened.
+
+**How it's protected.** The page asks for an admin password and sends it to
+the `adminPhotos` Cloud Function, which compares it with the `ADMIN_PASSWORD`
+secret and only then lists the photos. The security rules are unchanged, so
+the page itself still can't read the archive. Each photo loads through a link
+signed by the `adminPhoto` function that stops working after one to two hours
+(the page fetches new ones by itself), and archived files still have no
+download link of their own. The password is kept only in the open tab:
+reloading the page asks again, and **Lock** forgets it.
+
+**Setting it up** (once):
+
+```sh
+# Pick a long password (at least 12 characters). This also turns on Secret
+# Manager, which is free at this size.
+firebase functions:secrets:set ADMIN_PASSWORD --project chat-one-one-66cbf
+firebase deploy --only functions --project chat-one-one-66cbf
+# The first build after cloud_functions was added needs a fresh plugin list,
+# or the page fails with "Int64 accessor not supported by dart2js".
+rm -rf .dart_tool/flutter_build
+flutter build web --release
+firebase deploy --only hosting --project chat-one-one-66cbf
+```
+
+To change the password, run the `secrets:set` command again and redeploy the
+functions. Links handed out before stop working.
+
+With the emulators, the password is the `ADMIN_PASSWORD=` line in
+`functions/.secret.local` (kept out of git; `npm test` creates it with a
+random password if it's missing). Without it, the emulators would ask the real
+project's Secret Manager. Open `http://localhost:<port>/admin/photos` on a
+web build made with `--dart-define=USE_EMULATORS=true`.
 
 ## Testing
 
 ```sh
 flutter test                 # unit tests
-cd functions && npm test     # archive, notifications + security rules, on local emulators
+cd functions && npm test     # archive, notifications, admin page + security rules, on local emulators
 ```
 
 `npm test` runs against the Firebase emulators, never the real project, and
@@ -164,11 +218,14 @@ lib/
   services/push.dart          push notification permission and tokens
   services/voice_recorder.dart, voice_player.dart   voice messages
   services/theme_settings.dart  the chosen theme, saved on this device
+  admin_app.dart, screens/admin_*, services/admin_service.dart,
+  models/admin_photo.dart     the website's /admin/photos page
   theme.dart                  the color themes
   screens/                    setup, chat, chat theme, image preview / viewer, view once
   widgets/                    message bubbles, voice player, reply quotes,
                               links, swipe to reply, header with presence
-functions/index.js            archive + push notifications
+functions/index.js            archive + push notifications + admin page
+functions/admin.js            what the admin page lists, and its signed links
 functions/notification.js     what a notification says
 firestore.rules, storage.rules
 web/firebase-messaging-sw.js  website notifications while it's closed

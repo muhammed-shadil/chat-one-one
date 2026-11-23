@@ -1,13 +1,13 @@
 {
   "name": "chat-one-one-functions",
-  "description": "Private archive of opened, deleted and edited messages, and push notifications",
+  "description": "Private archive of opened, deleted and edited messages, push notifications, and the admin photos page",
   "private": true,
   "main": "index.js",
   "engines": {
     "node": "22"
   },
   "scripts": {
-    "test": "firebase emulators:exec --only firestore,storage,functions --project chat-one-one-66cbf \"node --test test/archive.test.js test/notification.test.js\"",
+    "test": "node test/local-secret.js && firebase emulators:exec --only firestore,storage,functions --project chat-one-one-66cbf \"node --test test/archive.test.js test/notification.test.js test/admin.test.js test/admin-page.test.js\"",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },

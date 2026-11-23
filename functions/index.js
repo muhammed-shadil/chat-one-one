@@ -12,7 +12,12 @@
 //    in the Firebase console.
 //
 // 2. Push notifications for new messages (notifyNewMessage).
+//
+// 3. The password-protected admin page on the website, /admin/photos, which
+//    shows every photo, archived ones included (adminPhotos, adminPhoto; see
+//    admin.js).
 
+const { pipeline } = require('node:stream/promises');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
@@ -23,11 +28,26 @@ const {
   onDocumentUpdated,
   onDocumentDeleted,
 } = require('firebase-functions/v2/firestore');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
+const { defineSecret } = require('firebase-functions/params');
 const logger = require('firebase-functions/logger');
 const { notificationFor } = require('./notification');
+const {
+  passwordIsSetUp,
+  passwordMatches,
+  linkSigner,
+  linkExpiry,
+  photoLink,
+  buildPhotoList,
+} = require('./admin');
 
 // Same region as the Firestore database (see firebase.json).
-setGlobalOptions({ region: 'asia-south1', maxInstances: 5 });
+const REGION = 'asia-south1';
+setGlobalOptions({ region: REGION, maxInstances: 5 });
+
+// Set with `firebase functions:secrets:set ADMIN_PASSWORD`; for the
+// emulators, in functions/.secret.local. At least 12 characters.
+const ADMIN_PASSWORD = defineSecret('ADMIN_PASSWORD');
 
 initializeApp();
 
@@ -111,6 +131,122 @@ exports.notifyNewMessage = onDocumentCreated(MESSAGE, async (event) => {
   }
   logger.info(`Notified ${recipientId}: ${result.successCount} sent, ${dead.length} stale`);
 });
+
+// ------------------------------------------------------------- admin page
+
+// Lists every photo for the admin page, given the admin password.
+exports.adminPhotos = onCall({ secrets: [ADMIN_PASSWORD] }, async (request) => {
+  const password = ADMIN_PASSWORD.value();
+  if (!passwordIsSetUp(password)) {
+    throw new HttpsError('failed-precondition', 'The admin password has not been set up yet.');
+  }
+  if (!passwordMatches(request.data?.password, password)) {
+    logger.warn('Admin page: wrong password');
+    // Slows down guessing.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    throw new HttpsError('permission-denied', 'Wrong password.');
+  }
+
+  const db = getFirestore();
+  const [chatRefs, [files]] = await Promise.all([
+    // Includes chats that only have subcollections and no document of their own.
+    db.collection('chats').listDocuments(),
+    getStorage().bucket(BUCKET).getFiles({ prefix: 'chats/' }),
+  ]);
+  const photoTypes = ['image', 'file'];
+  const chats = await Promise.all(
+    chatRefs.map(async (chat) => {
+      const [messages, archived, members] = await Promise.all([
+        chat.collection('messages').where('type', 'in', photoTypes).get(),
+        chat.collection('deleted').where('type', 'in', photoTypes).get(),
+        chat.collection('members').get(),
+      ]);
+      const entries = (snap) => snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+      return {
+        id: chat.id,
+        members: Object.fromEntries(members.docs.map((d) => [d.id, { name: d.get('name') }])),
+        messages: entries(messages),
+        archived: entries(archived),
+      };
+    }),
+  );
+
+  const exp = linkExpiry(Date.now());
+  const signer = linkSigner(password);
+  const base = adminPhotoUrl();
+  const result = buildPhotoList(
+    chats,
+    files.map((f) => ({
+      path: f.name,
+      size: f.metadata.size,
+      contentType: f.metadata.contentType,
+      timeCreated: f.metadata.timeCreated,
+    })),
+    (path) => photoLink(base, signer, path, exp),
+  );
+  logger.info(`Admin page: listed ${result.photos.length} photos`);
+  return { ...result, linksExpireAt: exp * 1000 };
+});
+
+// Sends one photo to the admin page, through a signed link from adminPhotos.
+exports.adminPhoto = onRequest({ secrets: [ADMIN_PASSWORD] }, async (req, res) => {
+  // The link itself is the permission, so any page may load it. This lets
+  // the website draw the photo itself instead of using an <img> element.
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.status(405).send('Method not allowed');
+    return;
+  }
+  const password = ADMIN_PASSWORD.value();
+  const { path, exp, sig } = req.query;
+  if (!passwordIsSetUp(password) || !linkSigner(password).verify(path, exp, sig)) {
+    res.status(403).send('This link is not valid.');
+    return;
+  }
+  const secondsLeft = Number(exp) - Math.floor(Date.now() / 1000);
+  if (!(secondsLeft > 0)) {
+    res.status(403).send('This link has expired. Reload the admin page.');
+    return;
+  }
+
+  const file = getStorage().bucket(BUCKET).file(path);
+  let metadata;
+  try {
+    [metadata] = await file.getMetadata();
+  } catch (e) {
+    if (e.code !== 404) throw e;
+    res.status(404).send('This photo is no longer in Storage.');
+    return;
+  }
+  if (!String(metadata.contentType).startsWith('image/')) {
+    res.status(415).send('Not a photo.');
+    return;
+  }
+  res.set({
+    'Content-Type': metadata.contentType,
+    'Content-Length': String(metadata.size),
+    'Cache-Control': `private, max-age=${secondsLeft}`,
+    'X-Content-Type-Options': 'nosniff',
+    // Opened on its own, the file can't run anything (an SVG with scripts).
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+  });
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+  await pipeline(file.createReadStream(), res);
+});
+
+// Where adminPhoto is reachable, on the emulators or the real project.
+function adminPhotoUrl() {
+  const project = process.env.GCLOUD_PROJECT || 'chat-one-one-66cbf';
+  if (process.env.FUNCTIONS_EMULATOR === 'true') {
+    return `http://127.0.0.1:5001/${project}/${REGION}/adminPhoto`;
+  }
+  return `https://${REGION}-${project}.cloudfunctions.net/adminPhoto`;
+}
+
+// ------------------------------------------------------------------ archive
 
 async function archive(chatId, messageId, message, extra) {
   // The download link stops working once the file is moved, so drop it.

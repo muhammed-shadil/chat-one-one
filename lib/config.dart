@@ -10,6 +10,13 @@ const String kChatId = 'rhxd7yqwcq6xant5r6k5nzvx';
 /// notifications are off in that mode, since the emulators can't send them.
 const bool kUseEmulators = bool.fromEnvironment('USE_EMULATORS');
 
+/// Where the Cloud Functions run, as in `functions/index.js`.
+const String kFunctionsRegion = 'asia-south1';
+
+/// The website's private admin page, which shows every photo, including
+/// opened view-once and deleted ones. Password-protected by Cloud Functions.
+const String kAdminPhotosPath = '/admin/photos';
+
 /// The two people in the chat. Their display names are chosen inside the app
 /// on first launch, so nothing here needs editing.
 const String kPerson1 = 'p1';

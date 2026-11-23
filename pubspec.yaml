@@ -30,6 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Real paths on the website, such as /admin/photos.
+  flutter_web_plugins:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -50,6 +53,8 @@ dependencies:
   just_audio: ^0.10.6
   firebase_messaging: ^16.7.0
   cross_file: ^0.3.5+5
+  # Only the website's admin page uses it (functions/index.js adminPhotos).
+  cloud_functions: ^6.5.1
 
 dev_dependencies:
   flutter_test:
