@@ -17,9 +17,10 @@ class AdminException implements Exception {
   String toString() => message;
 }
 
-/// Talks to the `adminPhotos` Cloud Function (functions/index.js). The
-/// archive is hidden from the app by the security rules; this function is
-/// the only way in, and it checks the ADMIN_PASSWORD secret.
+/// Talks to this chat's admin Cloud Function ([kAdminPhotosFunction]:
+/// `adminPhotos`, or `adminPhotos2` for the second chat; functions/index.js).
+/// The archive is hidden from the app by the security rules; this function
+/// is the only way in, and it checks the chat's own admin password.
 class AdminService {
   AdminService({FirebaseFunctions? functions})
       : _functions =
@@ -30,7 +31,7 @@ class AdminService {
   Future<AdminPhotoList> listPhotos(String password) async {
     try {
       final result = await _functions
-          .httpsCallable('adminPhotos')
+          .httpsCallable(kAdminPhotosFunction)
           .call<Object?>({'password': password});
       return AdminPhotoList.fromData(result.data);
     } on FirebaseFunctionsException catch (e) {

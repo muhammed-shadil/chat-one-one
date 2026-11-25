@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "test": "node test/local-secret.js && firebase emulators:exec --only firestore,storage,functions --project chat-one-one-66cbf \"node --test test/archive.test.js test/notification.test.js test/admin.test.js test/admin-page.test.js\"",
+    "test": "node test/local-secret.js && firebase emulators:exec --only firestore,storage,functions --project chat-one-one-66cbf \"node --test test/archive.test.js test/notification.test.js test/admin.test.js test/admin-page.test.js test/chats.test.js test/second-chat.test.js\"",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },

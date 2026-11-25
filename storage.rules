@@ -1,15 +1,22 @@
 rules_version = '2';
 
-// Photos and files live under the same secret chat ID as the messages
-// (kChatId in lib/config.dart). Nothing outside it is accessible.
+// Photos and files live under the same secret chat IDs as the messages
+// (kFirstChatId and kSecondChatId in lib/config.dart). Nothing outside them
+// is accessible.
 service firebase.storage {
   match /b/{bucket}/o {
-    match /chats/rhxd7yqwcq6xant5r6k5nzvx/{folder}/{allPaths=**} {
+
+    function isChat(chatId) {
+      return chatId in ['rhxd7yqwcq6xant5r6k5nzvx', '4drjzcca8t69rrduir7z2hnk'];
+    }
+
+    match /chats/{chatId}/{folder}/{allPaths=**} {
       // The app only uses images/, files/ and audio/. The deleted/ archive is
       // written by Cloud Functions and is visible only in the Firebase console.
-      allow read: if folder in ['images', 'files', 'audio'];
+      allow read: if isChat(chatId) && folder in ['images', 'files', 'audio'];
       // 100 MB limit, matching kMaxUploadBytes in lib/config.dart.
-      allow create: if folder in ['images', 'files', 'audio']
+      allow create: if isChat(chatId)
+                    && folder in ['images', 'files', 'audio']
                     && request.resource.size < 100 * 1024 * 1024;
       // No deletes from the app: Cloud Functions move opened view-once photos
       // and deleted messages' files into deleted/ instead.

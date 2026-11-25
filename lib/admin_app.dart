@@ -17,7 +17,8 @@ class AdminApp extends StatelessWidget {
 
   final ThemeSettings themeSettings;
 
-  /// Defaults to the `adminPhotos` Cloud Function; tests pass their own.
+  /// Defaults to this chat's admin Cloud Function ([kAdminPhotosFunction]);
+  /// tests pass their own.
   final PhotoLoader? loadPhotos;
 
   @override

@@ -3,6 +3,32 @@
 A private chat app for exactly two people. There's no login or sign-up: on first
 launch, each phone picks **Person 1** or **Person 2** and enters a name, and that's it.
 
+The project runs **two completely separate chats** (see [Two chats](#two-chats)),
+each with its own website, chat history and admin page.
+
+## Two chats
+
+| | First chat | Second chat |
+|---|---|---|
+| Website | <https://chat-one-one-66cbf.web.app> | <https://chat-one-one-2-xevg3.web.app> |
+| Admin page | [/admin/photos](https://chat-one-one-66cbf.web.app/admin/photos) | [/admin/photos](https://chat-one-one-2-xevg3.web.app/admin/photos) |
+| Admin password (secret) | `ADMIN_PASSWORD` | `ADMIN_PASSWORD_2` |
+| Admin functions | `adminPhotos`, `adminPhoto` | `adminPhotos2`, `adminPhoto2` |
+| Chat ID (`lib/config.dart`) | `kFirstChatId` | `kSecondChatId` |
+| Build with | nothing extra (the default, also for the APK) | `--dart-define=CHAT=2` |
+| Web build folder | `build/web` | `build/web-chat2` |
+
+They share one Firebase project, but never each other's data:
+
+- A build only contains its own chat ID (the other one is compiled out), so
+  neither app can reach the other chat's messages or photos.
+- Each admin page has its own password and lists only its own chat. Photo
+  links are signed with that password and refused for the other chat's files.
+- The archive and notification functions work on whichever chat a message is
+  in. Notifications open that chat's own website (`functions/chats.js`).
+- Names, "who am I", themes and notifications are saved per website, so the
+  same browser can use both chats.
+
 ## Features
 
 - Text messages, with sent ✓ and seen ✓✓ (blue) ticks
@@ -73,12 +99,19 @@ launch, each phone picks **Person 1** or **Person 2** and enters a name, and tha
 ## Web version
 
 The same app runs in the browser at <https://chat-one-one-66cbf.web.app>
-(Firebase Hosting), using the same Firestore and Storage as the phones.
-To publish changes:
+(Firebase Hosting), using the same Firestore and Storage as the phones. The
+second chat runs at <https://chat-one-one-2-xevg3.web.app>. Each website is
+published on its own; name the site, because a plain `--only hosting`
+publishes both:
 
 ```sh
+# First chat
 flutter build web --release
-firebase deploy --only hosting --project chat-one-one-66cbf
+firebase deploy --only hosting:chat-one-one-66cbf --project chat-one-one-66cbf
+
+# Second chat
+flutter build web --release --dart-define=CHAT=2 --output build/web-chat2
+firebase deploy --only hosting:chat-one-one-2-xevg3 --project chat-one-one-66cbf
 ```
 
 If a new plugin doesn't work on the website after `flutter pub add`, delete
@@ -160,6 +193,13 @@ signed by the `adminPhoto` function that stops working after one to two hours
 download link of their own. The password is kept only in the open tab:
 reloading the page asks again, and **Lock** forgets it.
 
+**The second chat** has its own page at
+<https://chat-one-one-2-xevg3.web.app/admin/photos>, with its own password
+(`ADMIN_PASSWORD_2`) and functions (`adminPhotos2`, `adminPhoto2`). It lists
+only the second chat; the first chat's page lists everything except the
+second chat. To change its password, use `secrets:set ADMIN_PASSWORD_2` and
+redeploy `functions:adminPhotos2,functions:adminPhoto2`.
+
 **Setting it up** (once):
 
 ```sh
@@ -171,15 +211,15 @@ firebase deploy --only functions --project chat-one-one-66cbf
 # or the page fails with "Int64 accessor not supported by dart2js".
 rm -rf .dart_tool/flutter_build
 flutter build web --release
-firebase deploy --only hosting --project chat-one-one-66cbf
+firebase deploy --only hosting:chat-one-one-66cbf --project chat-one-one-66cbf
 ```
 
 To change the password, run the `secrets:set` command again and redeploy the
 functions. Links handed out before stop working.
 
-With the emulators, the password is the `ADMIN_PASSWORD=` line in
-`functions/.secret.local` (kept out of git; `npm test` creates it with a
-random password if it's missing). Without it, the emulators would ask the real
+With the emulators, the passwords are the `ADMIN_PASSWORD=` and
+`ADMIN_PASSWORD_2=` lines in `functions/.secret.local` (kept out of git;
+`npm test` creates them with random passwords if they're missing). Without it, the emulators would ask the real
 project's Secret Manager. Open `http://localhost:<port>/admin/photos` on a
 web build made with `--dart-define=USE_EMULATORS=true`.
 
@@ -198,19 +238,22 @@ with `--dart-define=USE_EMULATORS=true`.
 
 ## How privacy works without accounts
 
-All data lives under one long random chat ID (`kChatId` in `lib/config.dart`).
-The Firestore and Storage rules only allow that ID, and nobody can list which
-chats exist, so the ID works like a shared password. **Don't share the APK**,
-because the ID is inside it.
+All data lives under one long random chat ID per chat (`kFirstChatId` and
+`kSecondChatId` in `lib/config.dart`). The Firestore and Storage rules only
+allow those IDs, and nobody can list which chats exist, so each ID works like
+a shared password. **Don't share the APK**, because the ID is inside it.
+Each website also carries its own chat's ID (and only that one), so only give
+a chat's website address to the people in that chat.
 
-To use a new ID, change it in `lib/config.dart`, `firestore.rules` and
-`storage.rules`, redeploy the rules, and rebuild the app.
+To use a new ID, change it in `lib/config.dart`, `firestore.rules`,
+`storage.rules` and `functions/chats.js`, redeploy the rules and functions,
+and rebuild the app (`npm test` checks the four places agree).
 
 ## Project layout
 
 ```
 lib/
-  config.dart                 chat ID, limits, emulator switch
+  config.dart                 which chat (CHAT=1 or 2), chat IDs, limits, emulator switch
   main.dart                   Firebase init, first-launch routing
   models/message.dart         Message, ReplyRef, Member
   services/chat_service.dart  all Firestore / Storage reads and writes
@@ -226,6 +269,7 @@ lib/
                               links, swipe to reply, header with presence
 functions/index.js            archive + push notifications + admin page
 functions/admin.js            what the admin page lists, and its signed links
+functions/chats.js            the two chats: IDs, websites, which admin page sees what
 functions/notification.js     what a notification says
 firestore.rules, storage.rules
 web/firebase-messaging-sw.js  website notifications while it's closed

@@ -1,21 +1,30 @@
 rules_version = '2';
 
 // There are no accounts, so access is controlled by the chat ID instead:
-// only data under this one ID (kChatId in lib/config.dart) can be touched.
-// Everything else, including listing which chats exist, is denied.
+// only data under the two chat IDs (kFirstChatId and kSecondChatId in
+// lib/config.dart) can be touched. Everything else, including listing which
+// chats exist, is denied. The two chats are completely separate: each app
+// build only knows its own ID, so it can never reach the other chat.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /chats/rhxd7yqwcq6xant5r6k5nzvx {
+
+    function isChat(chatId) {
+      return chatId in ['rhxd7yqwcq6xant5r6k5nzvx', '4drjzcca8t69rrduir7z2hnk'];
+    }
+
+    match /chats/{chatId} {
 
       match /messages/{messageId} {
-        allow read, delete: if true;
+        allow read, delete: if isChat(chatId);
 
-        allow create: if request.resource.data.senderId in ['p1', 'p2']
+        allow create: if isChat(chatId)
+                      && request.resource.data.senderId in ['p1', 'p2']
                       && request.resource.data.type in ['text', 'image', 'file', 'audio'];
 
         // After sending, only read receipts, view-once and voice-played state,
         // reactions, and the words of a text message (an edit) may change.
-        allow update: if changed().hasOnly(['seen', 'opened', 'openedAt', 'url', 'played',
+        allow update: if isChat(chatId)
+                      && changed().hasOnly(['seen', 'opened', 'openedAt', 'url', 'played',
                                             'reactions', 'text', 'edited', 'editedAt'])
                       && (!changed().hasAny(['text', 'edited', 'editedAt'])
                           || resource.data.type == 'text')
@@ -28,8 +37,8 @@ service cloud.firestore {
       }
 
       match /members/{personId} {
-        allow read: if true;
-        allow write: if personId in ['p1', 'p2'];
+        allow read: if isChat(chatId);
+        allow write: if isChat(chatId) && personId in ['p1', 'p2'];
       }
 
       // Archive of opened view-once photos and deleted messages. Written by

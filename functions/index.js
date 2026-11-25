@@ -14,8 +14,14 @@
 // 2. Push notifications for new messages (notifyNewMessage).
 //
 // 3. The password-protected admin page on the website, /admin/photos, which
-//    shows every photo, archived ones included (adminPhotos, adminPhoto; see
-//    admin.js).
+//    shows every photo, archived ones included (see admin.js). Each chat has
+//    its own pair of functions and its own password, and only ever sees its
+//    own photos (see chats.js):
+//      first chat:   adminPhotos,  adminPhoto    ADMIN_PASSWORD
+//      second chat:  adminPhotos2, adminPhoto2   ADMIN_PASSWORD_2
+//
+// The two chats share the archive and notification functions: those work on
+// whichever chat a message is in (the {chatId} in the path).
 
 const { pipeline } = require('node:stream/promises');
 const { initializeApp } = require('firebase-admin/app');
@@ -40,14 +46,17 @@ const {
   photoLink,
   buildPhotoList,
 } = require('./admin');
+const { ADMIN_SCOPES, siteFor, scopeIncludesPath } = require('./chats');
 
 // Same region as the Firestore database (see firebase.json).
 const REGION = 'asia-south1';
 setGlobalOptions({ region: REGION, maxInstances: 5 });
 
-// Set with `firebase functions:secrets:set ADMIN_PASSWORD`; for the
-// emulators, in functions/.secret.local. At least 12 characters.
+// Set with `firebase functions:secrets:set ADMIN_PASSWORD` (first chat) and
+// `… ADMIN_PASSWORD_2` (second chat); for the emulators, in
+// functions/.secret.local. At least 12 characters each.
 const ADMIN_PASSWORD = defineSecret('ADMIN_PASSWORD');
+const ADMIN_PASSWORD_2 = defineSecret('ADMIN_PASSWORD_2');
 
 initializeApp();
 
@@ -93,8 +102,6 @@ exports.archiveEditedMessage = onDocumentUpdated(MESSAGE, async (event) => {
   logger.info(`Archived the previous text of ${messageId}`);
 });
 
-const SITE = 'https://chat-one-one-66cbf.web.app';
-
 // Errors meaning a token belongs to an uninstalled app or a browser that
 // turned notifications off, so it should be forgotten.
 const DEAD_TOKEN = new Set([
@@ -115,13 +122,15 @@ exports.notifyNewMessage = onDocumentCreated(MESSAGE, async (event) => {
   if (tokens.length === 0) return;
 
   const { title, body } = notificationFor(message, sender.get('name'));
+  // Each chat's notifications open that chat's own website.
+  const site = siteFor(chatId);
   const result = await getMessaging().sendEachForMulticast({
     tokens,
     notification: { title, body },
     android: { priority: 'high', notification: { channelId: 'messages' } },
     webpush: {
-      notification: { icon: `${SITE}/icons/Icon-192.png` },
-      fcmOptions: { link: SITE },
+      notification: { icon: `${site}/icons/Icon-192.png` },
+      fcmOptions: { link: site },
     },
   });
 
@@ -134,116 +143,150 @@ exports.notifyNewMessage = onDocumentCreated(MESSAGE, async (event) => {
 
 // ------------------------------------------------------------- admin page
 
-// Lists every photo for the admin page, given the admin password.
-exports.adminPhotos = onCall({ secrets: [ADMIN_PASSWORD] }, async (request) => {
-  const password = ADMIN_PASSWORD.value();
-  if (!passwordIsSetUp(password)) {
-    throw new HttpsError('failed-precondition', 'The admin password has not been set up yet.');
-  }
-  if (!passwordMatches(request.data?.password, password)) {
-    logger.warn('Admin page: wrong password');
-    // Slows down guessing.
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    throw new HttpsError('permission-denied', 'Wrong password.');
-  }
+// One chat's admin page: [listPhotos] lists its photos given the password,
+// and [sendPhoto] sends one photo through a signed link from that list.
+// [scope] (chats.js) keeps each page to its own chat's photos, and each page
+// signs its links with its own password, so neither page can open the other
+// chat's photos.
+function adminPage({ label, secret, scope, photoFunction }) {
+  const listPhotos = onCall({ secrets: [secret] }, async (request) => {
+    const password = secret.value();
+    if (!passwordIsSetUp(password)) {
+      throw new HttpsError('failed-precondition', 'The admin password has not been set up yet.');
+    }
+    if (!passwordMatches(request.data?.password, password)) {
+      logger.warn(`Admin page (${label}): wrong password`);
+      // Slows down guessing.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      throw new HttpsError('permission-denied', 'Wrong password.');
+    }
 
-  const db = getFirestore();
-  const [chatRefs, [files]] = await Promise.all([
-    // Includes chats that only have subcollections and no document of their own.
-    db.collection('chats').listDocuments(),
-    getStorage().bucket(BUCKET).getFiles({ prefix: 'chats/' }),
-  ]);
-  const photoTypes = ['image', 'file'];
-  const chats = await Promise.all(
-    chatRefs.map(async (chat) => {
-      const [messages, archived, members] = await Promise.all([
-        chat.collection('messages').where('type', 'in', photoTypes).get(),
-        chat.collection('deleted').where('type', 'in', photoTypes).get(),
-        chat.collection('members').get(),
-      ]);
-      const entries = (snap) => snap.docs.map((d) => ({ id: d.id, data: d.data() }));
-      return {
-        id: chat.id,
-        members: Object.fromEntries(members.docs.map((d) => [d.id, { name: d.get('name') }])),
-        messages: entries(messages),
-        archived: entries(archived),
-      };
-    }),
-  );
+    const db = getFirestore();
+    const [allChatRefs, [allFiles]] = await Promise.all([
+      // Includes chats that only have subcollections and no document of their own.
+      db.collection('chats').listDocuments(),
+      getStorage().bucket(BUCKET).getFiles({ prefix: scope.storagePrefix }),
+    ]);
+    // Only this page's chats, never the other chat's.
+    const chatRefs = allChatRefs.filter((chat) => scope.includes(chat.id));
+    const files = allFiles.filter((f) => scopeIncludesPath(scope, f.name));
+    const photoTypes = ['image', 'file'];
+    const chats = await Promise.all(
+      chatRefs.map(async (chat) => {
+        const [messages, archived, members] = await Promise.all([
+          chat.collection('messages').where('type', 'in', photoTypes).get(),
+          chat.collection('deleted').where('type', 'in', photoTypes).get(),
+          chat.collection('members').get(),
+        ]);
+        const entries = (snap) => snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+        return {
+          id: chat.id,
+          members: Object.fromEntries(members.docs.map((d) => [d.id, { name: d.get('name') }])),
+          messages: entries(messages),
+          archived: entries(archived),
+        };
+      }),
+    );
 
-  const exp = linkExpiry(Date.now());
-  const signer = linkSigner(password);
-  const base = adminPhotoUrl();
-  const result = buildPhotoList(
-    chats,
-    files.map((f) => ({
-      path: f.name,
-      size: f.metadata.size,
-      contentType: f.metadata.contentType,
-      timeCreated: f.metadata.timeCreated,
-    })),
-    (path) => photoLink(base, signer, path, exp),
-  );
-  logger.info(`Admin page: listed ${result.photos.length} photos`);
-  return { ...result, linksExpireAt: exp * 1000 };
-});
-
-// Sends one photo to the admin page, through a signed link from adminPhotos.
-exports.adminPhoto = onRequest({ secrets: [ADMIN_PASSWORD] }, async (req, res) => {
-  // The link itself is the permission, so any page may load it. This lets
-  // the website draw the photo itself instead of using an <img> element.
-  res.set('Access-Control-Allow-Origin', '*');
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    res.status(405).send('Method not allowed');
-    return;
-  }
-  const password = ADMIN_PASSWORD.value();
-  const { path, exp, sig } = req.query;
-  if (!passwordIsSetUp(password) || !linkSigner(password).verify(path, exp, sig)) {
-    res.status(403).send('This link is not valid.');
-    return;
-  }
-  const secondsLeft = Number(exp) - Math.floor(Date.now() / 1000);
-  if (!(secondsLeft > 0)) {
-    res.status(403).send('This link has expired. Reload the admin page.');
-    return;
-  }
-
-  const file = getStorage().bucket(BUCKET).file(path);
-  let metadata;
-  try {
-    [metadata] = await file.getMetadata();
-  } catch (e) {
-    if (e.code !== 404) throw e;
-    res.status(404).send('This photo is no longer in Storage.');
-    return;
-  }
-  if (!String(metadata.contentType).startsWith('image/')) {
-    res.status(415).send('Not a photo.');
-    return;
-  }
-  res.set({
-    'Content-Type': metadata.contentType,
-    'Content-Length': String(metadata.size),
-    'Cache-Control': `private, max-age=${secondsLeft}`,
-    'X-Content-Type-Options': 'nosniff',
-    // Opened on its own, the file can't run anything (an SVG with scripts).
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    const exp = linkExpiry(Date.now());
+    const signer = linkSigner(password);
+    const base = functionUrl(photoFunction);
+    const result = buildPhotoList(
+      chats,
+      files.map((f) => ({
+        path: f.name,
+        size: f.metadata.size,
+        contentType: f.metadata.contentType,
+        timeCreated: f.metadata.timeCreated,
+      })),
+      (path) => photoLink(base, signer, path, exp),
+    );
+    logger.info(`Admin page (${label}): listed ${result.photos.length} photos`);
+    return { ...result, linksExpireAt: exp * 1000 };
   });
-  if (req.method === 'HEAD') {
-    res.end();
-    return;
-  }
-  await pipeline(file.createReadStream(), res);
-});
 
-// Where adminPhoto is reachable, on the emulators or the real project.
-function adminPhotoUrl() {
+  const sendPhoto = onRequest({ secrets: [secret] }, async (req, res) => {
+    // The link itself is the permission, so any page may load it. This lets
+    // the website draw the photo itself instead of using an <img> element.
+    res.set('Access-Control-Allow-Origin', '*');
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.status(405).send('Method not allowed');
+      return;
+    }
+    const password = secret.value();
+    const { path, exp, sig } = req.query;
+    if (
+      !passwordIsSetUp(password) ||
+      !linkSigner(password).verify(path, exp, sig) ||
+      !scopeIncludesPath(scope, path)
+    ) {
+      res.status(403).send('This link is not valid.');
+      return;
+    }
+    const secondsLeft = Number(exp) - Math.floor(Date.now() / 1000);
+    if (!(secondsLeft > 0)) {
+      res.status(403).send('This link has expired. Reload the admin page.');
+      return;
+    }
+
+    const file = getStorage().bucket(BUCKET).file(path);
+    let metadata;
+    try {
+      [metadata] = await file.getMetadata();
+    } catch (e) {
+      if (e.code !== 404) throw e;
+      res.status(404).send('This photo is no longer in Storage.');
+      return;
+    }
+    if (!String(metadata.contentType).startsWith('image/')) {
+      res.status(415).send('Not a photo.');
+      return;
+    }
+    res.set({
+      'Content-Type': metadata.contentType,
+      'Content-Length': String(metadata.size),
+      'Cache-Control': `private, max-age=${secondsLeft}`,
+      'X-Content-Type-Options': 'nosniff',
+      // Opened on its own, the file can't run anything (an SVG with scripts).
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    await pipeline(file.createReadStream(), res);
+  });
+
+  return { listPhotos, sendPhoto };
+}
+
+// The first chat's admin page, https://chat-one-one-66cbf.web.app/admin/photos
+const firstAdmin = adminPage({
+  label: 'first chat',
+  secret: ADMIN_PASSWORD,
+  scope: ADMIN_SCOPES.first,
+  photoFunction: 'adminPhoto',
+});
+exports.adminPhotos = firstAdmin.listPhotos;
+exports.adminPhoto = firstAdmin.sendPhoto;
+
+// The second chat's admin page, https://chat-one-one-2-xevg3.web.app/admin/photos
+const secondAdmin = adminPage({
+  label: 'second chat',
+  secret: ADMIN_PASSWORD_2,
+  scope: ADMIN_SCOPES.second,
+  photoFunction: 'adminPhoto2',
+});
+exports.adminPhotos2 = secondAdmin.listPhotos;
+exports.adminPhoto2 = secondAdmin.sendPhoto;
+
+// Where an HTTP function is reachable, on the emulators or the real project.
+function functionUrl(name) {
   const project = process.env.GCLOUD_PROJECT || 'chat-one-one-66cbf';
   if (process.env.FUNCTIONS_EMULATOR === 'true') {
-    return `http://127.0.0.1:5001/${project}/${REGION}/adminPhoto`;
+    return `http://127.0.0.1:5001/${project}/${REGION}/${name}`;
   }
-  return `https://${REGION}-${project}.cloudfunctions.net/adminPhoto`;
+  return `https://${REGION}-${project}.cloudfunctions.net/${name}`;
 }
 
 // ------------------------------------------------------------------ archive

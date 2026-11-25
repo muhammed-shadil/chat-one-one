@@ -46,3 +46,6 @@ app.*.map.json
 
 # Firebase deploy cache
 .firebase/
+
+# Private notes with passwords (never commit)
+*.private.md

@@ -16,6 +16,9 @@ import 'services/theme_settings.dart';
 import 'theme.dart';
 
 Future<void> main() async {
+  if (!kKnownChats.contains(kChat)) {
+    throw StateError('Unknown --dart-define=CHAT=$kChat. Use 1 or 2.');
+  }
   WidgetsFlutterBinding.ensureInitialized();
   // On the website, real paths like /admin/photos instead of /#/admin/photos.
   // Does nothing in the phone apps.
